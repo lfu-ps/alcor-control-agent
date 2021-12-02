@@ -50,7 +50,7 @@ public:
                  const std::unordered_map<std::string, std::string> port_id_map,
                  const char* address = "0.0.0.0",
                  const int port = 1234,
-                 const int nthreads = 4,
+                 const int nthreads = 8,
                  bool secure = false) :
             xid(0),
             switch_dpid_map(switch_dpid_map),
@@ -80,6 +80,10 @@ public:
     void setup_default_br_tun_flows();
 
     void execute_flow(const std::string br, const std::string flow_str, const std::string action = "add");
+
+    void add_flows(const std::string br, const std::vector<std::string> flows);
+
+    void send_barrier_req(const std::string br, uint32_t xid);
 
     void packet_out(const char* br, const char* opt);
 

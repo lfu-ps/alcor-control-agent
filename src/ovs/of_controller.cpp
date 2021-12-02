@@ -65,8 +65,9 @@ void OFController::message_callback(OFConnection* ofconn, uint8_t type, void* da
         }
     } else if (type == fluid_msg::of13::OFPT_BARRIER_REPLY) {
         auto t = std::chrono::high_resolution_clock::now();
-        ACA_LOG_INFO("OFController::message_callback - recv OFPT_BARRIER_REPLY on %ld\n", t.time_since_epoch().count());
+        std::cout << "OFController::message_callback - recv OFPT_BARRIER_REPLY on " << t.time_since_epoch().count() << std::endl;
     } else if (type == fluid_msg::of13::OFPT_PACKET_IN) {
+
         fluid_msg::of13::PacketIn *pin = new of13::PacketIn();
         pin->unpack((uint8_t *) data);
         uint32_t in_port = pin->match().in_port()->value();
@@ -258,6 +259,28 @@ void OFController::execute_flow(const std::string br, const std::string flow_str
         ACA_LOG_ERROR("OFController::execute_flow - ovs connection to bridge %s not found\n", br.c_str());
     }
 
+    ofconn_br = NULL;
+}
+
+void OFController::add_flows(const std::string br, const std::vector<std::string> flows) {
+    int x_id = 0;
+    OFConnection* ofconn_br = get_instance(br);
+
+    for (auto f : flows) {
+        send_flow(ofconn_br, create_add_flow(f));
+        x_id++;
+    }
+
+    fluid_msg::of13::BarrierRequest barrier_req(x_id);
+    ofconn_br->send(barrier_req.pack(), barrier_req.length());
+    ofconn_br = NULL;
+}
+
+void OFController::send_barrier_req(const std::string br, uint32_t xid) {
+    OFConnection* ofconn_br = get_instance(br);
+
+    fluid_msg::of13::BarrierRequest barrier_req(xid);
+    ofconn_br->send(barrier_req.pack(), barrier_req.length());
     ofconn_br = NULL;
 }
 

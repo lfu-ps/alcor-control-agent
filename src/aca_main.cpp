@@ -34,10 +34,19 @@
 #include <unistd.h> /* for getopt */
 #include <grpcpp/grpcpp.h>
 #include <cmath>
+#include <future>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <random>
+#include <iostream>
+#include <unordered_map>
+#include "ctpl/ctpl_stl.h"
 
 using aca_message_pulsar::ACA_Message_Pulsar_Consumer;
 using aca_ovs_control::ACA_OVS_Control;
 using std::string;
+using namespace ctpl;
 
 // Defines
 #define ACALOGNAME "AlcorControlAgent"
@@ -50,6 +59,30 @@ static char OFCTL_COMMAND[] = "monitor";
 static char OFCTL_TARGET[] = "br-int";
 
 using namespace std;
+
+#define MAC_ADDR_LENGTH 12
+#define FMT_MAC_ADDR_LEN (MAC_ADDR_LENGTH+5)
+
+char HEXCHAR[16]={'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+//char genMACAddr[MAC_ADDR_LENGTH];
+
+char* gen_mac() {
+    unsigned short n = 0;
+    char* fmtMACAddr = new char[FMT_MAC_ADDR_LEN];
+    std::random_device dev;
+    std::mt19937 rng(dev());
+    std::uniform_int_distribution<std::mt19937::result_type> dist16(0,15); // distribution in range [0, 15]
+
+    for (int i = 0; i < FMT_MAC_ADDR_LEN; i++) {
+        if ((i + 1) % 3 == 0) {
+            fmtMACAddr[i] = ':';
+        } else {
+            fmtMACAddr[i] = HEXCHAR[dist16(rng)];
+        }
+    }
+
+    return fmtMACAddr;
+}
 
 // Global variables
 std::thread *g_grpc_server_thread = NULL;
@@ -67,6 +100,7 @@ string g_ncm_address = EMPTY_STRING;
 string g_ncm_port = EMPTY_STRING;
 string g_ovs_ctrl_address = "127.0.0.1";
 int g_ovs_ctrl_port = 1234;
+ctpl::thread_pool thread_pool_;
 
 // total time for execute_system_command in microseconds
 std::atomic_ulong g_total_execute_system_time(0);
@@ -183,6 +217,7 @@ int main(int argc, char *argv[])
   signal(SIGINT, aca_signal_handler);
   signal(SIGTERM, aca_signal_handler);
 
+  /*
   while ((option = getopt(argc, argv, "a:p:b:h:g:s:c:t:o:md")) != -1) {
     switch (option) {
     case 'a':
@@ -265,6 +300,7 @@ int main(int argc, char *argv[])
   g_grpc_client_thread = new std::thread(
           std::bind(&GoalStateProvisionerClientImpl::RunClient, g_grpc_client));
   g_grpc_client_thread->detach();
+  */
 
   aca_ovs_l2_programmer::ACA_OVS_L2_Programmer::get_instance().get_local_host_ips();
 
@@ -277,6 +313,65 @@ int main(int argc, char *argv[])
 
   // setup ovs controller with server ip address and port number, will be used for openflow operations
   aca_ovs_l2_programmer::ACA_OVS_L2_Programmer::get_instance().setup_ovs_controller(g_ovs_ctrl_address, g_ovs_ctrl_port);
+
+  // test
+  std::this_thread::sleep_for(std::chrono::seconds(5));
+  std::vector<std::string> flows;
+  int count = 0;
+  std::unordered_map<std::string, int> distinct_mac;
+  thread_pool_.resize(30);
+
+  for (int i = 0; i < 100; i++) {
+      for (int j = 0; j < 100; j++) {
+          for (int k = 0; k < 100; k++) {
+              /*
+              std::string mac;
+              bool gen_needed = true;
+              while (gen_needed) {
+                  mac = gen_mac();
+                  if (!aca_validate_mac_address(mac.c_str())) {
+                      break;
+                  }
+
+                  if (distinct_mac.find(mac) == distinct_mac.end()) {
+                      // not found, good for this round and add for later check
+                      distinct_mac[mac] = 0;
+                      gen_needed = false;
+                  }
+              }
+              
+              std::string remote_host_ip = "10." + std::to_string(k) + "." + std::to_string(j) + "." + std::to_string(i);
+              std::string match_string = "table=20,priority=50,dl_vlan=1,dl_dst=" + mac;
+              std::string action_string = ",actions=strip_vlan,load:21->NXM_NX_TUN_ID[],set_field:" + remote_host_ip + "->tun_dst,output:100";
+              flows.push_back(match_string + action_string);
+              */
+
+              std::string remote_host_ip = "10." + std::to_string(k) + "." + std::to_string(j) + "." + std::to_string(i);
+              std::string flow_string = "table=1,tcp,nw_dst=" + remote_host_ip + ",priority=1,actions=drop";
+              flows.push_back(flow_string);
+          }
+      }
+  }
+
+  ulong not_care_culminative_time;
+  auto operation_start = chrono::steady_clock::now();
+  auto t = chrono::high_resolution_clock::now();
+  std::cout << "Push ovs flows starts: " << t.time_since_epoch().count() << std::endl;
+  for (auto f : flows) {
+      thread_pool_.push(
+              std::bind(&OFController::execute_flow,
+                        aca_ovs_l2_programmer::ACA_OVS_L2_Programmer::get_instance().ofctrl,
+                        "br-tun", f, "add"));
+      count++;
+  }
+
+  auto of_ctrler = aca_ovs_l2_programmer::ACA_OVS_L2_Programmer::get_instance().ofctrl;
+  of_ctrler->send_barrier_req("br-tun", count);
+
+  auto operation_end = chrono::steady_clock::now();
+  auto operation_total_time =
+          cast_to_microseconds(operation_end - operation_start).count();
+  std::cout << "Push ovs flows took: " << operation_total_time / 1000 << " ms" << std::endl;
 
   //// monitor br-int for dhcp request message
   //ovs_monitor_brint_thread =

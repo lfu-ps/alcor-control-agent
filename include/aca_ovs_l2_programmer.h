@@ -40,6 +40,8 @@ class ACA_OVS_L2_Programmer {
 
   int setup_ovs_controller(const std::string ctrler_ip, const int ctrler_port);
 
+  OFController* ofctrl;
+
   void clean_up_ovs_controller();
 
   std::string get_system_port_id(std::string port_name);
@@ -76,7 +78,6 @@ class ACA_OVS_L2_Programmer {
   void operator=(ACA_OVS_L2_Programmer const &) = delete;
 
   private:
-  OFController* ofctrl;
   std::unordered_map<std::string, std::string> port_id_map;
   std::vector<std::string> host_ips_vector;
 
