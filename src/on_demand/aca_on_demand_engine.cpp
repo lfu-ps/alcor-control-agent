@@ -119,7 +119,7 @@ void ACA_On_Demand_Engine::process_async_replies_asyncly(
 {
   ACA_LOG_DEBUG("Trying to process this hostOperationReply in another thread id: [%ld]",
                 std::this_thread::get_id());
-  std::unordered_map<std::__cxx11::string, on_demand_payload *, std::hash<std::__cxx11::string> >::iterator found_data;
+  std::unordered_map<std::string, on_demand_payload *, std::hash<std::string> >::iterator found_data;
   on_demand_payload *request_payload;
   ACA_LOG_DEBUG("%s\n", "Got an GRPC reply that is OK, need to process it.");
   ACA_LOG_DEBUG("Return from NCM - Reply Status: %s\n", to_string(replyStatus).c_str());

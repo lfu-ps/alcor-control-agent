@@ -19,6 +19,11 @@
 #include "aca_util.h"
 #include "aca_on_demand_engine.h"
 
+// seastar
+#include <core/sharded.hh>
+#include <core/app-template.hh>
+#include <core/thread.hh>
+
 using namespace fluid_base;
 using namespace fluid_msg;
 
@@ -67,15 +72,27 @@ void OFController::message_callback(OFConnection* ofconn, uint8_t type, void* da
         auto t = std::chrono::high_resolution_clock::now();
         ACA_LOG_INFO("OFController::message_callback - recv OFPT_BARRIER_REPLY on %ld\n", t.time_since_epoch().count());
     } else if (type == fluid_msg::of13::OFPT_PACKET_IN) {
+        /*
         fluid_msg::of13::PacketIn *pin = new of13::PacketIn();
         pin->unpack((uint8_t *) data);
         uint32_t in_port = pin->match().in_port()->value();
 
         // pass new allocated memory of packet-in to ACA_On_Demand_Engine to determine which type of request it is
         aca_on_demand_engine::ACA_On_Demand_Engine::get_instance().thread_pool_.push(
-                std::bind(&aca_on_demand_engine::ACA_On_Demand_Engine::parse_packet,
-                          &aca_on_demand_engine::ACA_On_Demand_Engine::get_instance(),
-                          in_port, (void *)pin->data()));
+        std::bind(&aca_on_demand_engine::ACA_On_Demand_Engine::parse_packet,
+                  &aca_on_demand_engine::ACA_On_Demand_Engine::get_instance(),
+                  in_port, (void *)pin->data()));
+        */
+        seastar::thread_attributes attr = {};
+        seastar::async(attr, [data] {
+                               fluid_msg::of13::PacketIn *pin = new of13::PacketIn();
+                               pin->unpack((uint8_t *) data);
+                               uint32_t in_port = pin->match().in_port()->value();
+
+                               aca_on_demand_engine::ACA_On_Demand_Engine::get_instance().parse_packet(
+                                   in_port,
+                                   (void *)pin->data());
+                       });
     } else if (type == 33) { // OFPRAW_OFPT14_BUNDLE_CONTROL
         auto t = std::chrono::high_resolution_clock::now();
 
